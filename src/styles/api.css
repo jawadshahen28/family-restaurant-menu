@@ -1,0 +1,4 @@
+.api-menu-state { display: flex; flex-direction: column; align-items: center; gap: 18px; min-height: 180px; padding: 35px 18px; text-align: center; font-size: 13px; color: #875f42; }
+.api-menu-state .primary-button { max-width: 230px; }
+.store-availability-notice { padding: 13px 15px; border: 1px solid #efd39c; border-radius: 12px; background: #fff1cf; color: #835116; font-size: 12px; line-height: 1.9; margin: 12px 0; }
+.fulfillment-option:has(input:disabled) { opacity: .55; cursor: default; }
