@@ -27,6 +27,12 @@ test('production environment uses only CLIENT_ORIGIN even if development origins
   assert.deepEqual(config.allowedOrigins, ['https://menu.example.com']);
 });
 
+test('frontend hosting is opt-in and accepts only explicit boolean settings', () => {
+  assert.equal(validateEnvironment(environment).serveFrontend, false);
+  assert.equal(validateEnvironment({ ...environment, SERVE_FRONTEND: 'true' }).serveFrontend, true);
+  assert.throws(() => validateEnvironment({ ...environment, SERVE_FRONTEND: 'yes' }));
+});
+
 test('connection failure is clear and cannot expose driver credentials', async () => {
   const secret = 'mongodb+srv://private-user:private-password@private-host/';
   await assert.rejects(connectDatabase(validateEnvironment(environment), { connect: async () => { throw new Error(secret); } }), (error) => {

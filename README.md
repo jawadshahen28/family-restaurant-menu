@@ -127,6 +127,7 @@ This runs Vite and Express together. The customer app is available at http://loc
 | `npm run build` | Build the frontend into `dist/`. |
 | `npm run preview` | Preview the built frontend; this does not start or proxy the API. |
 | `npm run start:server` | Start Express using the private backend environment. |
+| `npm run test:production` | Build and run the full browser suite against isolated HTTPS production-mode hosting. |
 
 Database seed, migration, admin-creation, and VAPID-generation scripts are maintenance tools, not installation steps for an existing restaurant. Do not run them against an existing database without a separate, explicit maintenance decision.
 
@@ -137,7 +138,7 @@ The table lists names and roles only. Safe defaults and blank placeholders are i
 | Scope | Names | Purpose |
 | --- | --- | --- |
 | Backend, required | `MONGODB_URI`, `CLIENT_ORIGIN` | Authorized database connection and allowed frontend origin(s). |
-| Backend runtime | `PORT`, `NODE_ENV`, `TRUST_PROXY` | Listener, runtime mode, and reverse-proxy configuration. |
+| Backend runtime | `PORT`, `NODE_ENV`, `TRUST_PROXY`, `SERVE_FRONTEND` | Listener, runtime mode, reverse-proxy configuration, and optional same-origin frontend hosting. |
 | Backend development | `DEV_CLIENT_PORTS`, `DEV_ALLOW_LAN`, `DEV_CLIENT_ORIGINS` | Development-only origin handling. |
 | Backend Web Push | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | Existing Web Push credentials and contact subject. |
 | Backend optional media storage | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | Cloudinary uploads; otherwise images use local storage. |
@@ -159,15 +160,15 @@ Browser tests use Playwright with an installed Google Chrome browser. The UI tes
 
 ## Render deployment preparation
 
-The current project has two runtime pieces: a Vite frontend build and an Express API. Express serves API routes and uploaded images; it does **not** currently serve the frontend `dist/` directory. Starting only the backend will not publish the customer interface.
+The recommended production setup is one Node web service serving the Vite build, API, and uploads from the same origin. Set `SERVE_FRONTEND` to enable frontend hosting; the default remains API-only for local development and existing API deployments. The build directory is resolved from the module location, independently of npm's workspace working directory.
 
-A future Render setup needs a frontend static-site service (install with `npm ci`, build with `npm run build`, publish `dist/`) and a Node web service for the API (install the root workspace dependencies; start with `npm run start:server`), together with a reviewed same-origin routing arrangement for `/api` and `/uploads`. Admin requests use same-origin session cookies, so separate public frontend and API origins need additional routing preparation. The frontend also needs an SPA fallback to `index.html` for client-side routes.
+See [the exact Render configuration and authentication verification steps](docs/render-authentication.md). Use the repository root: a backend validator imports a shared phone-validation utility from root `src/`. The root lockfile also covers both npm workspaces. Build dependencies must be installed even when the runtime environment is production.
 
-Configure backend variables privately in the hosting dashboard, choose a compatible Node version, and use the authorized existing MongoDB configuration. Review production HTTPS origins, proxy settings, and secure session behavior before deployment. Web Push needs HTTPS and the existing VAPID credentials.
+Admin requests always target the page's own `/api` routes, use HttpOnly same-origin session cookies, and retain CSRF validation. Login verifies `/api/admin/me` before setting authenticated UI state. Unified builds force the public API base to the same origin, even if a stale separate-backend build setting remains. Sessions and CSRF tokens are not stored in localStorage.
 
 Local uploads resolve from `public/uploads` relative to the API process working directory. Preserve the existing Cloudinary option or arrange a persistent disk at the API's actual upload directory, including its local fallback path. Source code and `.gitkeep` files do not contain previously uploaded media. Render's default filesystem does not preserve runtime uploads across redeploys or restarts.
 
-See Render's [Node/Express guide](https://render.com/docs/deploy-node-express-app), [static-site routing documentation](https://render.com/docs/redirects-rewrites), and [persistent-disk documentation](https://render.com/docs/disks). These are preparation notes; uploading this repository does not create services, change Atlas, or deploy the application.
+Production browser tests require Chrome and OpenSSL (`OPENSSL_BIN` can select its executable). They generate and remove a disposable local TLS certificate, use a fresh MongoMemoryServer, and run the compiled app without Vite's development proxy. Only that test browser accepts the local self-signed certificate. No production database or credentials are used. These changes do not create services, change Atlas, or deploy the application.
 
 ## Security and local data
 

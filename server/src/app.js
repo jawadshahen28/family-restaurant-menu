@@ -22,8 +22,9 @@ import { createPushService } from './services/pushService.js';
 import { generateSlug, makeUniqueSlug } from './utils/slug.js';
 import { parseCookies, setSessionCookie, clearSessionCookie, ADMIN_SESSION_COOKIE } from './utils/cookies.js';
 import { safeOriginForLog } from './config/origins.js';
+import { serveFrontend } from './frontend.js';
 
-export function createApp({ repository, config, logger = defaultLogger, limiter = {}, uploadsDir, pushService: injectedPushService } = {}) {
+export function createApp({ repository, config, logger = defaultLogger, limiter = {}, uploadsDir, frontendDir, pushService: injectedPushService } = {}) {
   const app = express();
   const pushService = injectedPushService || createPushService({ repository, vapid: config?.vapid });
   const orders = createOrderService(repository, { pushService });
@@ -42,7 +43,9 @@ export function createApp({ repository, config, logger = defaultLogger, limiter 
     res.on('finish', () => logger.info('http_request', { requestId: req.requestId, method: req.method, path: req.route?.path || 'unmatched', status: res.statusCode, durationMs: Date.now() - started }));
     next();
   });
-  app.use(helmet());
+  app.use(helmet(config.serveFrontend ? {
+    contentSecurityPolicy: { directives: { imgSrc: ["'self'", 'data:', 'blob:', 'https:'] } },
+  } : {}));
   app.use(cors({ origin(origin, callback) {
     if (origin && !config.allowedOrigins.includes(origin)) {
       if (config.nodeEnv === 'development') logger.info('origin_rejected', { origin: safeOriginForLog(origin) });
@@ -135,7 +138,7 @@ export function createApp({ repository, config, logger = defaultLogger, limiter 
     const cookies = parseCookies(req.headers.cookie);
     const sessionId = cookies[ADMIN_SESSION_COOKIE];
     await adminAuth.logout(sessionId);
-    clearSessionCookie(res);
+    clearSessionCookie(res, { secure: config.nodeEnv === 'production' });
     success(res, { loggedOut: true });
   });
 
@@ -431,6 +434,7 @@ export function createApp({ repository, config, logger = defaultLogger, limiter 
     success(res, status);
   });
 
+  if (config.serveFrontend) serveFrontend(app, frontendDir);
   app.use((req, res, next) => next(new ApiError(404, 'NOT_FOUND', 'المسار المطلوب غير موجود.')));
   app.use(errorHandler);
   return app;

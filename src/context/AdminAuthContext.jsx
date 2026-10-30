@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { loginAdmin, getAdminMe, logoutAdmin } from '../services/adminService.js';
 
 const AdminAuthContext = createContext(null);
@@ -7,10 +7,13 @@ export function AdminAuthProvider({ children }) {
   const [admin, setAdmin] = useState(null);
   const [csrfToken, setCsrfToken] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const authVersion = useRef(0);
 
   const checkAuth = useCallback(async () => {
+    const version = ++authVersion.current;
     try {
       const data = await getAdminMe();
+      if (version !== authVersion.current) return;
       if (data?.authenticated && data?.user) {
         setAdmin(data.user);
         setCsrfToken(data.csrfToken);
@@ -19,10 +22,12 @@ export function AdminAuthProvider({ children }) {
         setCsrfToken(null);
       }
     } catch {
-      setAdmin(null);
-      setCsrfToken(null);
+      if (version === authVersion.current) {
+        setAdmin(null);
+        setCsrfToken(null);
+      }
     } finally {
-      setIsLoading(false);
+      if (version === authVersion.current) setIsLoading(false);
     }
   }, []);
 
@@ -31,20 +36,42 @@ export function AdminAuthProvider({ children }) {
   }, [checkAuth]);
 
   const login = async (username, password) => {
-    const data = await loginAdmin(username, password);
-    setAdmin(data.user);
-    setCsrfToken(data.csrfToken);
-    return data;
+    const version = ++authVersion.current;
+    try {
+      await loginAdmin(username, password);
+      // A successful POST alone does not prove the browser retained the HttpOnly cookie.
+      const data = await getAdminMe();
+      if (!data?.authenticated || !data.user || !data.csrfToken) {
+        throw new Error('تعذّر التحقق من جلسة تسجيل الدخول. أعد المحاولة.');
+      }
+      if (version === authVersion.current) {
+        setAdmin(data.user);
+        setCsrfToken(data.csrfToken);
+      }
+      return data;
+    } catch (error) {
+      if (version === authVersion.current) {
+        setAdmin(null);
+        setCsrfToken(null);
+      }
+      throw error;
+    } finally {
+      if (version === authVersion.current) setIsLoading(false);
+    }
   };
 
   const logout = async () => {
+    const version = ++authVersion.current;
     try {
       if (csrfToken) {
         await logoutAdmin(csrfToken);
       }
     } finally {
-      setAdmin(null);
-      setCsrfToken(null);
+      if (version === authVersion.current) {
+        setAdmin(null);
+        setCsrfToken(null);
+        setIsLoading(false);
+      }
     }
   };
 

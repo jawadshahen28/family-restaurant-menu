@@ -38,9 +38,10 @@ export function setSessionCookie(res, sessionId, { secure = false, maxAge = ADMI
 /**
  * Clears the admin session cookie.
  */
-export function clearSessionCookie(res) {
+export function clearSessionCookie(res, { secure = false } = {}) {
   res.clearCookie(ADMIN_SESSION_COOKIE, {
     httpOnly: true,
+    secure,
     sameSite: 'lax',
     path: '/',
   });

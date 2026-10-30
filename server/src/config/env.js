@@ -9,6 +9,7 @@ const envSchema = z.object({
   MONGODB_URI: z.string().min(1),
   CLIENT_ORIGIN: z.string().min(1),
   TRUST_PROXY: z.coerce.number().int().min(0).max(5).default(0),
+  SERVE_FRONTEND: z.enum(['true', 'false']).default('false'),
   DEV_CLIENT_ORIGINS: z.string().default(''),
   DEV_CLIENT_PORTS: z.string().default('5173,5174'),
   DEV_ALLOW_LAN: z.enum(['true', 'false']).default('true'),
@@ -35,6 +36,7 @@ export function validateEnvironment(source) {
     databaseName: 'family_menu',
     allowedOrigins,
     trustProxy: env.TRUST_PROXY,
+    serveFrontend: env.SERVE_FRONTEND === 'true',
     vapid: {
       publicKey: env.VAPID_PUBLIC_KEY,
       privateKey: env.VAPID_PRIVATE_KEY,

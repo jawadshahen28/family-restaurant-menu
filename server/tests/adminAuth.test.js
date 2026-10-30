@@ -154,3 +154,48 @@ test('rate limiting protects admin login against brute force', async () => {
   assert.equal(fourth.status, 429);
   assert.equal(fourth.body.error.code, 'RATE_LIMITED');
 });
+
+test('production sessions persist across every admin area, retain CSRF and clear securely', async () => {
+  const origin = 'https://family-restaurant-menu.onrender.com';
+  const legacyOrigin = 'https://family-restaurant-menu-1.onrender.com';
+  const productionApp = makeApp({ config: { ...config, nodeEnv: 'production', trustProxy: 1, allowedOrigins: [origin, legacyOrigin] } });
+  const legacyMenu = await request(productionApp).get('/api/categories').set('Origin', legacyOrigin);
+  assert.equal(legacyMenu.status, 200);
+  assert.equal(legacyMenu.headers['access-control-allow-origin'], legacyOrigin);
+  await models.Admin.create({ username: 'production-test-owner', passwordHash: await hashPassword('test-only-password') });
+  const login = await request(productionApp).post('/api/admin/login').set('Origin', origin).set('X-Forwarded-Proto', 'https')
+    .send({ username: 'production-test-owner', password: 'test-only-password' });
+  assert.equal(login.status, 200);
+  assert.equal(login.headers['access-control-allow-origin'], origin);
+  assert.equal(login.headers['access-control-allow-credentials'], 'true');
+  const issued = login.headers['set-cookie'][0];
+  for (const attribute of ['HttpOnly', 'Secure', 'SameSite=Lax', 'Path=/']) assert.ok(issued.includes(attribute));
+  assert.equal(/;\s*Domain=/i.test(issued), false);
+  const cookie = issued.split(';')[0];
+  const sessionId = parseCookies(cookie)[ADMIN_SESSION_COOKIE];
+  assert.equal(JSON.stringify(login.body).includes(sessionId), false);
+  const csrfToken = login.body.data.csrfToken;
+  for (const area of ['me', 'categories', 'products', 'offers', 'settings', 'orders']) {
+    const response = await request(productionApp).get(`/api/admin/${area}`).set('Origin', origin).set('Cookie', cookie);
+    assert.equal(response.status, 200, `Authenticated ${area}`);
+  }
+  for (const token of [undefined, 'incorrect-test-token']) {
+    let mutation = request(productionApp).patch('/api/admin/settings').set('Origin', origin).set('Cookie', cookie);
+    if (token) mutation = mutation.set('X-CSRF-Token', token);
+    const response = await mutation.send({ acceptingOrders: false });
+    assert.equal(response.status, 403);
+    assert.equal(response.body.error.code, 'CSRF_INVALID');
+  }
+  const updated = await request(productionApp).patch('/api/admin/settings').set('Origin', origin).set('Cookie', cookie)
+    .set('X-CSRF-Token', csrfToken).send({ acceptingOrders: false });
+  assert.equal(updated.status, 200);
+  const hostile = await request(productionApp).patch('/api/admin/settings').set('Origin', 'https://untrusted.invalid')
+    .set('Cookie', cookie).set('X-CSRF-Token', csrfToken).send({ acceptingOrders: true });
+  assert.equal(hostile.status, 403);
+  assert.equal(hostile.body.error.code, 'ORIGIN_DENIED');
+  const logout = await request(productionApp).post('/api/admin/logout').set('Origin', origin).set('Cookie', cookie).set('X-CSRF-Token', csrfToken);
+  assert.equal(logout.status, 200);
+  const cleared = logout.headers['set-cookie'][0];
+  for (const attribute of ['HttpOnly', 'Secure', 'SameSite=Lax', 'Path=/']) assert.ok(cleared.includes(attribute));
+  assert.equal((await request(productionApp).get('/api/admin/me').set('Cookie', cookie)).status, 401);
+});
