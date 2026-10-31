@@ -4,12 +4,13 @@ const money = { type: Number, required: true, min: 0, max: 100000, validate: { v
 const text = (max, required = false) => ({ type: String, trim: true, maxlength: max, required });
 const slug = { type: String, required: true, unique: true, trim: true, match: /^[a-z0-9]+(?:-[a-z0-9]+)*$/ };
 const options = { timestamps: true, bufferCommands: false, strict: 'throw' };
+const imageMetadata = () => ({ imageUrl: text(1000), imagePublicId: { ...text(300), default: '' }, imageVersion: { type: Number, min: 1, default: null } });
 
 export function createModels(connection) {
-  const category = new Schema({ name: text(120, true), slug, image: text(1000), icon: text(40), description: text(1000), sortOrder: { type: Number, default: 0 }, isActive: { type: Boolean, default: true } }, options);
-  const product = new Schema({ name: text(120, true), slug, description: text(1000), price: money, image: text(1000), categoryId: { type: Schema.Types.ObjectId, ref: 'Category', required: true }, isAvailable: { type: Boolean, default: true }, isFeatured: { type: Boolean, default: false }, sortOrder: { type: Number, default: 0 }, badge: text(80), isSpicy: { type: Boolean, default: false } }, options);
+  const category = new Schema({ ...imageMetadata(), name: text(120, true), slug, image: text(1000), icon: text(40), description: text(1000), sortOrder: { type: Number, default: 0 }, isActive: { type: Boolean, default: true } }, options);
+  const product = new Schema({ ...imageMetadata(), name: text(120, true), slug, description: text(1000), price: money, image: text(1000), categoryId: { type: Schema.Types.ObjectId, ref: 'Category', required: true }, isAvailable: { type: Boolean, default: true }, isFeatured: { type: Boolean, default: false }, sortOrder: { type: Number, default: 0 }, badge: text(80), isSpicy: { type: Boolean, default: false } }, options);
   product.index({ categoryId: 1, isAvailable: 1, sortOrder: 1 });
-  const offer = new Schema({ slug, title: text(120, true), description: text(1000), image: text(1000), originalPrice: money, offerPrice: money, startDate: { type: Date, required: true }, endDate: { type: Date, required: true, validate: { validator: function (value) { const update = this.getUpdate ? (this.getUpdate().$set || this.getUpdate()) : null; const start = this.startDate ?? update?.startDate ?? this.getUpdate?.().$setOnInsert?.startDate ?? this.get?.('startDate'); if (start === undefined || start === null) return true; return new Date(value) >= new Date(start); }, message: 'تاريخ انتهاء العرض يجب أن يلي تاريخ البداية.' } }, isActive: { type: Boolean, default: false }, productId: { type: Schema.Types.ObjectId, ref: 'Product', default: null } }, options);
+  const offer = new Schema({ ...imageMetadata(), slug, title: text(120, true), description: text(1000), image: text(1000), originalPrice: money, offerPrice: money, startDate: { type: Date, required: true }, endDate: { type: Date, required: true, validate: { validator: function (value) { const update = this.getUpdate ? (this.getUpdate().$set || this.getUpdate()) : null; const start = this.startDate ?? update?.startDate ?? this.getUpdate?.().$setOnInsert?.startDate ?? this.get?.('startDate'); if (start === undefined || start === null) return true; return new Date(value) >= new Date(start); }, message: 'تاريخ انتهاء العرض يجب أن يلي تاريخ البداية.' } }, isActive: { type: Boolean, default: false }, productId: { type: Schema.Types.ObjectId, ref: 'Product', default: null } }, options);
   offer.path('offerPrice').validate(function (value) { const update = this.getUpdate ? (this.getUpdate().$set || this.getUpdate()) : null; const original = this.originalPrice ?? update?.originalPrice ?? this.getUpdate?.().$setOnInsert?.originalPrice ?? this.get?.('originalPrice'); if (original === undefined || original === null) return true; return value <= original; }, 'سعر العرض لا يتجاوز السعر الأصلي.');
   offer.index({ isActive: 1, startDate: 1, endDate: 1, productId: 1 });
   const settings = new Schema({ _id: { type: String, default: 'store', enum: ['store'] }, restaurantName: { ...text(120, true), default: 'مطعم ومطبخ العائلة' }, isOpen: { type: Boolean, default: true }, acceptingOrders: { type: Boolean, default: true }, pickupEnabled: { type: Boolean, default: true }, deliveryEnabled: { type: Boolean, default: true }, announcement: { ...text(1000), default: '' }, phone: { ...text(32), default: '' } }, options);
@@ -72,7 +73,11 @@ export function createModels(connection) {
   }, options);
   pushNotificationJob.index({ status: 1, attempts: 1 });
 
+  const imageCleanupJob = new Schema({ imagePublicId: text(300, true), imageUrl: text(1000, true), cloudName: text(100, true), nextAttemptAt: { type: Date, default: Date.now } }, options);
+  imageCleanupJob.index({ cloudName: 1, imagePublicId: 1 }, { unique: true });
+  imageCleanupJob.index({ nextAttemptAt: 1 });
   const schemas = {
+    ImageCleanupJob: imageCleanupJob,
     Category: category,
     Product: product,
     Offer: offer,

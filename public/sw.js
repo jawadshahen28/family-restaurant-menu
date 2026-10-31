@@ -1,5 +1,5 @@
 // Service Worker for مطعم ومطبخ العائلة — Family Restaurant & Kitchen
-const CACHE_NAME = 'family-restaurant-pwa-v1';
+const CACHE_NAME = 'family-restaurant-pwa-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -40,7 +40,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
 
   // Never cache non-GET requests or any API requests
-  if (request.method !== 'GET' || url.pathname.startsWith('/api/')) {
+  if (request.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/') || url.pathname.startsWith('/uploads/')) {
     return;
   }
 

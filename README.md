@@ -141,7 +141,7 @@ The table lists names and roles only. Safe defaults and blank placeholders are i
 | Backend runtime | `PORT`, `NODE_ENV`, `TRUST_PROXY`, `SERVE_FRONTEND` | Listener, runtime mode, reverse-proxy configuration, and optional same-origin frontend hosting. |
 | Backend development | `DEV_CLIENT_PORTS`, `DEV_ALLOW_LAN`, `DEV_CLIENT_ORIGINS` | Development-only origin handling. |
 | Backend Web Push | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | Existing Web Push credentials and contact subject. |
-| Backend optional media storage | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | Cloudinary uploads; otherwise images use local storage. |
+| Backend image storage | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | Required for production uploads; local fallback is development-only. |
 | Frontend build | `VITE_API_BASE_URL` | Public API base URL; exposed in the browser bundle. |
 | Vite development | `API_PROXY_TARGET` | Backend target used by the development proxy. |
 
@@ -166,7 +166,7 @@ See [the exact Render configuration and authentication verification steps](docs/
 
 Admin requests always target the page's own `/api` routes, use HttpOnly same-origin session cookies, and retain CSRF validation. Login verifies `/api/admin/me` before setting authenticated UI state. Unified builds force the public API base to the same origin, even if a stale separate-backend build setting remains. Sessions and CSRF tokens are not stored in localStorage.
 
-Local uploads resolve from `public/uploads` relative to the API process working directory. Preserve the existing Cloudinary option or arrange a persistent disk at the API's actual upload directory, including its local fallback path. Source code and `.gitkeep` files do not contain previously uploaded media. Render's default filesystem does not preserve runtime uploads across redeploys or restarts.
+See [durable image uploads and synchronization](docs/image-uploads.md). Production uploads use Cloudinary and persist versioned URLs and public IDs. Missing or failing provider settings produce an error instead of ephemeral local uploads. Development without Cloudinary retains `public/uploads` relative to the API process working directory. Source code and `.gitkeep` files do not contain previously uploaded media.
 
 Production browser tests require Chrome and OpenSSL (`OPENSSL_BIN` can select its executable). They generate and remove a disposable local TLS certificate, use a fresh MongoMemoryServer, and run the compiled app without Vite's development proxy. Only that test browser accepts the local self-signed certificate. No production database or credentials are used. These changes do not create services, change Atlas, or deploy the application.
 

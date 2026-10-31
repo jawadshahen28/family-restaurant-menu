@@ -1,4 +1,5 @@
 import { apiRequest } from './apiClient.js';
+import { notifyMenuChanged } from './menuService.js';
 
 export async function getAdminOffers() {
   const result = await apiRequest('/admin/offers', { credentials: 'same-origin' });
@@ -17,6 +18,7 @@ export async function createAdminOffer(data, csrfToken) {
     csrfToken,
     credentials: 'same-origin',
   });
+  notifyMenuChanged();
   return result.data;
 }
 
@@ -27,6 +29,7 @@ export async function updateAdminOffer(id, data, csrfToken) {
     csrfToken,
     credentials: 'same-origin',
   });
+  notifyMenuChanged();
   return result.data;
 }
 
@@ -36,5 +39,6 @@ export async function deleteAdminOffer(id, csrfToken) {
     csrfToken,
     credentials: 'same-origin',
   });
+  notifyMenuChanged();
   return result.data;
 }

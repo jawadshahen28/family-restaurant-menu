@@ -14,7 +14,7 @@ import {
   deleteAdminOffer,
 } from '../../../services/adminOffersService.js';
 import { getAdminProducts } from '../../../services/adminCatalogService.js';
-import { clearMenuCache } from '../../../services/menuService.js';
+import { imagePayload } from '../../../utils/images.js';
 import { useAdminAuth } from '../../../context/AdminAuthContext.jsx';
 import { toLocalDatetimeInput, fromLocalDatetimeInput } from '../../../utils/format.js';
 
@@ -29,6 +29,8 @@ export default function OfferFormPage() {
   const [productId, setProductId] = useState('');
   const [description, setDescription] = useState('');
   const [image, setImage] = useState('');
+  const [imageAsset, setImageAsset] = useState(null);
+  const [imageUploading, setImageUploading] = useState(false);
   const [originalPrice, setOriginalPrice] = useState('');
   const [offerPrice, setOfferPrice] = useState('');
   const [startDate, setStartDate] = useState(() => toLocalDatetimeInput(new Date().toISOString()));
@@ -64,7 +66,10 @@ export default function OfferFormPage() {
             const pId = offerData.productId?._id ? String(offerData.productId._id) : (offerData.productId || '');
             setProductId(pId);
             setDescription(offerData.description || '');
-            setImage(offerData.image || '');
+            const ownImage = offerData.imageUrl || offerData.image || '';
+            const inherited = !offerData.imagePublicId && ownImage === (offerData.productId?.imageUrl || offerData.productId?.image || '');
+            setImage(inherited ? '' : ownImage);
+            setImageAsset(null);
             setOriginalPrice(String(offerData.originalPrice ?? ''));
             setOfferPrice(String(offerData.offerPrice ?? ''));
             setStartDate(toLocalDatetimeInput(offerData.startDate));
@@ -77,7 +82,6 @@ export default function OfferFormPage() {
           const firstProd = prodsList[0];
           setProductId(firstProd.id || String(firstProd._id));
           setOriginalPrice(String(firstProd.price ?? ''));
-          if (firstProd.image) setImage(firstProd.image);
         }
       } catch (err) {
         if (active) setError(err.message || 'تعذّر تحميل البيانات.');
@@ -99,15 +103,13 @@ export default function OfferFormPage() {
       if (!originalPrice || !isEditMode) {
         setOriginalPrice(String(prod.price ?? ''));
       }
-      if (!image && prod.image) {
-        setImage(prod.image);
-      }
     }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    if (imageUploading) return;
 
     if (!title.trim()) {
       setError('يرجى إدخال عنوان العرض.');
@@ -156,7 +158,7 @@ export default function OfferFormPage() {
         title: title.trim(),
         productId,
         description: description.trim(),
-        image: image.trim(),
+        ...imagePayload(image.trim(), imageAsset),
         originalPrice: orig,
         offerPrice: off,
         startDate: startUtc,
@@ -169,7 +171,6 @@ export default function OfferFormPage() {
       } else {
         await createAdminOffer(payload, csrfToken);
       }
-      clearMenuCache();
       navigate('/admin/offers');
     } catch (err) {
       setError(err.message || 'فشل حفظ العرض.');
@@ -219,8 +220,9 @@ export default function OfferFormPage() {
               صورة العرض
             </label>
             <ImageUploader
-              value={image}
-              onChange={setImage}
+              value={image || products.find(product => product.id === productId)?.imageUrl || products.find(product => product.id === productId)?.image || ''}
+              onChange={(url, asset) => { setImage(url); setImageAsset(asset); }}
+              onUploadStateChange={setImageUploading}
               csrfToken={csrfToken}
               folder="offers"
             />
@@ -380,7 +382,7 @@ export default function OfferFormPage() {
           {/* Save Button */}
           <button
             type="submit"
-            disabled={saving}
+            disabled={saving || imageUploading}
             className="w-full py-3.5 px-4 bg-[#DC2626] hover:bg-[#B91C1C] active:bg-[#991B1B] text-white font-bold rounded-2xl shadow-sm shadow-red-600/20 active:scale-[0.99] transition-all flex items-center justify-center gap-2 text-sm cursor-pointer disabled:opacity-60"
           >
             {saving ? (

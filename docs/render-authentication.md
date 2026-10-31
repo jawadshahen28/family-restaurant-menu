@@ -43,6 +43,6 @@ If keeping the old frontend origin is mandatory, use a real proxy web service wi
 4. Categories, products, offers, settings and orders load using relative `/api` requests.
 5. Missing/wrong CSRF and unapproved origins are rejected; logout invalidates the server session and clears its cookie.
 6. Menu, cart, checkout and order confirmation work on the same public origin.
-7. Uploads retain the existing Cloudinary option. Render Free's local disk is ephemeral, including the local fallback when Cloudinary is unavailable; local uploads are not made durable by this authentication change.
+7. Configure the three server-side Cloudinary settings for production uploads; production does not fall back to local storage. See [image upload and replacement behavior](image-uploads.md). Old local upload links still need their original files or re-uploading.
 
 Run `npm test` and `npm run test:production` locally. The production browser command also builds the frontend, deliberately supplies a stale external API setting to verify the unified override, uses real HTTPS with disposable test certificates, and checks secure cookies and customer checkout against an isolated database.

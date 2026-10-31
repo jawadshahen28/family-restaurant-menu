@@ -23,13 +23,17 @@ import { generateSlug, makeUniqueSlug } from './utils/slug.js';
 import { parseCookies, setSessionCookie, clearSessionCookie, ADMIN_SESSION_COOKIE } from './utils/cookies.js';
 import { safeOriginForLog } from './config/origins.js';
 import { serveFrontend } from './frontend.js';
+import { createImageService } from './services/imageService.js';
+import { offerImageInput } from './utils/images.js';
 
-export function createApp({ repository, config, logger = defaultLogger, limiter = {}, uploadsDir, frontendDir, pushService: injectedPushService } = {}) {
+export function createApp({ repository, config, logger = defaultLogger, limiter = {}, uploadsDir, frontendDir, pushService: injectedPushService, uploadService: injectedUploadService } = {}) {
   const app = express();
   const pushService = injectedPushService || createPushService({ repository, vapid: config?.vapid });
   const orders = createOrderService(repository, { pushService });
   const adminAuth = createAdminAuthService(repository);
-  const uploadService = createUploadService({ uploadsDir });
+  const uploadService = injectedUploadService || createUploadService({ uploadsDir, nodeEnv: config.nodeEnv, cloudinary: config.cloudinary || {} });
+  const images = createImageService({ repository, uploads: uploadService, logger });
+  app.locals.imageService = images;
   app.disable('x-powered-by');
   app.set('trust proxy', config.trustProxy || false);
 
@@ -79,6 +83,7 @@ export function createApp({ repository, config, logger = defaultLogger, limiter 
     }
   };
 
+  app.use(['/api/categories', '/api/products', '/api/offers', '/api/store'], (req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
   app.get('/api/health', async (req, res) => { if (!(await repository.healthy())) throw new ApiError(503, 'DATABASE_UNAVAILABLE', 'الخدمة غير متاحة مؤقتًا.'); success(res, { status: 'ok' }); });
   app.get('/api/categories', async (req, res) => success(res, (await repository.categories()).map(categoryDto)));
   app.get('/api/products', async (req, res) => {
@@ -145,7 +150,7 @@ export function createApp({ repository, config, logger = defaultLogger, limiter 
   // Admin Image Upload Endpoint
   app.post('/api/admin/upload', requireAdmin, async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
-    const result = await uploadService.uploadImage(req.body || {});
+    const result = await uploadService.uploadImage(req.body || {}, req.admin.id);
     success(res, result, 201);
   });
 
@@ -161,7 +166,7 @@ export function createApp({ repository, config, logger = defaultLogger, limiter 
     const data = validateCreateCategory(req.body);
     const baseSlug = generateSlug(data.name, 'category');
     const slug = await makeUniqueSlug(repository.models.Category, baseSlug);
-    const created = await repository.createCategory({ ...data, slug });
+    const created = await images.save({ data: { ...data, slug }, owner: req.admin.id, persist: prepared => repository.createCategory(prepared) });
     success(res, { ...created, id: String(created._id), productCount: 0 }, 201);
   });
 
@@ -175,7 +180,7 @@ export function createApp({ repository, config, logger = defaultLogger, limiter 
     if (!existing) {
       throw new ApiError(404, 'CATEGORY_NOT_FOUND', 'الفئة غير موجودة.');
     }
-    const updated = await repository.updateCategory(req.params.id, data);
+    const updated = await images.save({ data, previous: existing, owner: req.admin.id, persist: prepared => repository.updateCategory(req.params.id, prepared) });
     const count = await repository.countProductsForCategory(req.params.id);
     success(res, { ...updated, id: String(updated._id), productCount: count });
   });
@@ -193,7 +198,7 @@ export function createApp({ repository, config, logger = defaultLogger, limiter 
     if (count > 0) {
       throw new ApiError(409, 'CATEGORY_IN_USE', `لا يمكن حذف الفئة لاحتوائها على ${count} من الوجبات. يرجى نقل الوجبات أو حذفها أولاً.`);
     }
-    await repository.deleteCategory(req.params.id);
+    await images.remove(existing, () => repository.deleteCategory(req.params.id));
     success(res, { deleted: true, id: req.params.id });
   });
 
@@ -219,7 +224,7 @@ export function createApp({ repository, config, logger = defaultLogger, limiter 
     }
     const baseSlug = generateSlug(data.name, 'meal');
     const slug = await makeUniqueSlug(repository.models.Product, baseSlug);
-    const created = await repository.createProduct({ ...data, slug });
+    const created = await images.save({ data: { ...data, slug }, owner: req.admin.id, persist: prepared => repository.createProduct(prepared) });
     success(res, { ...created, id: String(created._id) }, 201);
   });
 
@@ -239,7 +244,7 @@ export function createApp({ repository, config, logger = defaultLogger, limiter 
     if (!existing) {
       throw new ApiError(404, 'PRODUCT_NOT_FOUND', 'الوجبة غير موجودة.');
     }
-    const updated = await repository.updateProduct(req.params.id, data);
+    const updated = await images.save({ data, previous: existing, owner: req.admin.id, productId: req.params.id, persist: prepared => repository.updateProduct(req.params.id, prepared) });
     success(res, { ...updated, id: String(updated._id) });
   });
 
@@ -257,7 +262,7 @@ export function createApp({ repository, config, logger = defaultLogger, limiter 
       throw new ApiError(409, 'PRODUCT_IN_OFFER', 'لا يمكن حذف الوجبة لارتباطها بعرض ترويجي نشط حاليًا. يرجى تعديل أو إيقاف العرض أولاً.');
     }
     await repository.detachOffersForProduct(req.params.id);
-    await repository.deleteProduct(req.params.id);
+    await images.remove(existing, () => repository.deleteProduct(req.params.id));
     success(res, { deleted: true, id: req.params.id });
   });
 
@@ -289,12 +294,12 @@ export function createApp({ repository, config, logger = defaultLogger, limiter 
     }
     const baseSlug = generateSlug(data.title, 'offer');
     const slug = await makeUniqueSlug(repository.models.Offer, baseSlug);
-    const offerData = {
+    const offerData = offerImageInput({
       ...data,
       slug,
-      image: data.image || product.image || '',
-    };
-    const created = await repository.createOffer(offerData);
+      image: data.image || '',
+    }, product);
+    const created = await images.save({ data: offerData, owner: req.admin.id, persist: prepared => repository.createOffer(prepared) });
     success(res, { ...created, id: String(created._id) }, 201);
   });
 
@@ -308,11 +313,13 @@ export function createApp({ repository, config, logger = defaultLogger, limiter 
     if (!existing) {
       throw new ApiError(404, 'OFFER_NOT_FOUND', 'العرض غير موجود.');
     }
+    let selectedProduct = existing.productId;
     if (data.productId) {
       const product = await repository.findProductById(data.productId);
       if (!product) {
         throw new ApiError(400, 'PRODUCT_NOT_FOUND', 'الوجبة المحددة غير موجودة.');
       }
+      selectedProduct = product;
     }
     const finalOriginal = data.originalPrice !== undefined ? data.originalPrice : existing.originalPrice;
     const finalOffer = data.offerPrice !== undefined ? data.offerPrice : existing.offerPrice;
@@ -325,7 +332,7 @@ export function createApp({ repository, config, logger = defaultLogger, limiter 
       throw new ApiError(400, 'VALIDATION_ERROR', 'تاريخ انتهاء العرض يجب أن يلي تاريخ البداية.');
     }
 
-    const updated = await repository.updateOffer(req.params.id, data);
+    const updated = await images.save({ data: offerImageInput(data, selectedProduct, existing), previous: existing, owner: req.admin.id, persist: prepared => repository.updateOffer(req.params.id, prepared) });
     success(res, { ...updated, id: String(updated._id) });
   });
 
@@ -338,7 +345,7 @@ export function createApp({ repository, config, logger = defaultLogger, limiter 
     if (!existing) {
       throw new ApiError(404, 'OFFER_NOT_FOUND', 'العرض غير موجود.');
     }
-    await repository.deleteOffer(req.params.id);
+    await images.remove(existing, () => repository.deleteOffer(req.params.id));
     success(res, { deleted: true, id: req.params.id });
   });
 

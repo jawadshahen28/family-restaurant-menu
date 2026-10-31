@@ -14,6 +14,7 @@ import {
   deleteAdminProduct,
 } from '../../../services/adminCatalogService.js';
 import { useAdminAuth } from '../../../context/AdminAuthContext.jsx';
+import { imagePayload } from '../../../utils/images.js';
 
 export default function ProductFormPage() {
   const navigate = useNavigate();
@@ -27,6 +28,8 @@ export default function ProductFormPage() {
   const [price, setPrice] = useState('');
   const [description, setDescription] = useState('');
   const [image, setImage] = useState('');
+  const [imageAsset, setImageAsset] = useState(null);
+  const [imageUploading, setImageUploading] = useState(false);
   const [isAvailable, setIsAvailable] = useState(true);
   const [isFeatured, setIsFeatured] = useState(false);
 
@@ -56,7 +59,8 @@ export default function ProductFormPage() {
             setCategoryId(target.categoryId?._id ? String(target.categoryId._id) : (target.categoryId || ''));
             setPrice(String(target.price ?? ''));
             setDescription(target.description || '');
-            setImage(target.image || '');
+            setImage(target.imageUrl || target.image || '');
+            setImageAsset(null);
             setIsAvailable(target.isAvailable ?? true);
             setIsFeatured(target.isFeatured ?? false);
           } else {
@@ -82,6 +86,7 @@ export default function ProductFormPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    if (imageUploading) return;
 
     const trimmedName = name.trim();
     if (!trimmedName || trimmedName.length < 2) {
@@ -107,7 +112,7 @@ export default function ProductFormPage() {
         categoryId,
         price: numPrice,
         description: description.trim(),
-        image: image || '',
+        ...imagePayload(image, imageAsset),
         isAvailable,
         isFeatured,
       };
@@ -169,7 +174,9 @@ export default function ProductFormPage() {
             </label>
             <ImageUploader
               value={image}
-              onChange={setImage}
+              onChange={(url, asset) => { setImage(url); setImageAsset(asset); }}
+              onUploadStateChange={setImageUploading}
+              folder="products"
               label="صورة الوجبة"
               placeholder="اختر صورة الوجبة"
             />
@@ -284,7 +291,7 @@ export default function ProductFormPage() {
           <div className="pt-2 space-y-2.5">
             <button
               type="submit"
-              disabled={saving || deleting}
+              disabled={saving || deleting || imageUploading}
               className="w-full py-3.5 px-4 bg-[#DC2626] hover:bg-[#B91C1C] active:bg-[#991B1B] text-white font-bold rounded-2xl shadow-sm shadow-red-600/20 active:scale-[0.99] transition-all flex items-center justify-center gap-2 text-sm cursor-pointer disabled:opacity-60"
             >
               {saving ? (

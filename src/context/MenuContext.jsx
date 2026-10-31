@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { getMenu } from '../services/menuService';
+import { clearMenuCache, getMenu, MENU_CHANGE_EVENT, MENU_CHANGE_KEY } from '../services/menuService';
 const MenuContext = createContext(null);
 
 export function MenuProvider({ children }) {
@@ -12,9 +12,13 @@ export function MenuProvider({ children }) {
     let active = true;
     getMenu().then((menu) => { if (active) setState({ ...menu, loading: false, error: '' }); }).catch((error) => { if (active) setState((previous) => ({ ...previous, loading: false, error: error.message })); });
     const refresh = () => { if (document.visibilityState === 'visible') refreshMenu(); };
+    const changed = () => refreshMenu();
+    const storageChanged = event => { if (event.key === MENU_CHANGE_KEY) { clearMenuCache(); refreshMenu(); } };
     window.addEventListener('focus', refresh);
+    window.addEventListener(MENU_CHANGE_EVENT, changed);
+    window.addEventListener('storage', storageChanged);
     document.addEventListener('visibilitychange', refresh);
-    return () => { active = false; window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh); };
+    return () => { active = false; window.removeEventListener('focus', refresh); window.removeEventListener(MENU_CHANGE_EVENT, changed); window.removeEventListener('storage', storageChanged); document.removeEventListener('visibilitychange', refresh); };
   }, [refreshMenu]);
   return <MenuContext.Provider value={{ ...state, refreshMenu }}>{children}</MenuContext.Provider>;
 }

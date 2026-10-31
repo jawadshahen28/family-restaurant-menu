@@ -162,8 +162,8 @@ test('offer creation validates fields, auto-generates slug, and requires offerPr
   assert.ok(validRes.body.data.slug);
   assert.equal(validRes.body.data.offerPrice, 35);
   assert.equal(validRes.body.data.originalPrice, 45);
-  // Defaulted to product image
-  assert.equal(validRes.body.data.image, '/uploads/chicken.jpg');
+  // Keep inheritance dynamic instead of copying the product's current URL.
+  assert.equal(validRes.body.data.image, '');
 
   // Verify it appears in admin list
   const listRes = await request(app).get('/api/admin/offers')

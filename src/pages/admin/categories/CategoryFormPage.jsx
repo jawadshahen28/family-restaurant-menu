@@ -13,6 +13,7 @@ import {
   deleteAdminCategory,
 } from '../../../services/adminCatalogService.js';
 import { useAdminAuth } from '../../../context/AdminAuthContext.jsx';
+import { imagePayload } from '../../../utils/images.js';
 
 export default function CategoryFormPage() {
   const navigate = useNavigate();
@@ -22,6 +23,8 @@ export default function CategoryFormPage() {
 
   const [name, setName] = useState('');
   const [image, setImage] = useState('');
+  const [imageAsset, setImageAsset] = useState(null);
+  const [imageUploading, setImageUploading] = useState(false);
   const [sortOrder, setSortOrder] = useState('0');
   const [isActive, setIsActive] = useState(true);
 
@@ -41,7 +44,8 @@ export default function CategoryFormPage() {
         const target = (cats || []).find((c) => c.id === id || String(c._id) === id);
         if (target) {
           setName(target.name || '');
-          setImage(target.image || '');
+          setImage(target.imageUrl || target.image || '');
+          setImageAsset(null);
           setSortOrder(String(target.sortOrder ?? 0));
           setIsActive(target.isActive ?? true);
         } else {
@@ -63,6 +67,7 @@ export default function CategoryFormPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    if (imageUploading) return;
 
     const trimmedName = name.trim();
     if (!trimmedName || trimmedName.length < 2) {
@@ -74,7 +79,7 @@ export default function CategoryFormPage() {
     try {
       const payload = {
         name: trimmedName,
-        image: image || '',
+        ...imagePayload(image, imageAsset),
         sortOrder: Number(sortOrder) || 0,
         isActive,
       };
@@ -136,7 +141,9 @@ export default function CategoryFormPage() {
             </label>
             <ImageUploader
               value={image}
-              onChange={setImage}
+              onChange={(url, asset) => { setImage(url); setImageAsset(asset); }}
+              onUploadStateChange={setImageUploading}
+              folder="categories"
               label="صورة الفئة"
               placeholder="اختر صورة الفئة"
             />
@@ -194,7 +201,7 @@ export default function CategoryFormPage() {
           <div className="pt-2 space-y-2.5">
             <button
               type="submit"
-              disabled={saving || deleting}
+              disabled={saving || deleting || imageUploading}
               className="w-full py-3.5 px-4 bg-[#DC2626] hover:bg-[#B91C1C] active:bg-[#991B1B] text-white font-bold rounded-2xl shadow-sm shadow-red-600/20 active:scale-[0.99] transition-all flex items-center justify-center gap-2 text-sm cursor-pointer disabled:opacity-60"
             >
               {saving ? (

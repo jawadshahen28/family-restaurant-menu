@@ -10,6 +10,8 @@ import { MongoMemoryServer } from 'mongodb-memory-server';
 import { createModels, ensureIndexes } from '../server/src/models/index.js';
 import { createRepository } from '../server/src/services/repository.js';
 import { createApp } from '../server/src/app.js';
+import { createUploadService } from '../server/src/services/uploadService.js';
+import { createTestCloudinary, testCloudinaryConfig } from '../tests/helpers/cloudinary.js';
 
 // Own the Vite server directly so Windows cleanup does not need process-tree utilities.
 let server;
@@ -44,7 +46,10 @@ try {
   const models = createModels(connection);
   await ensureIndexes(models);
   const testConfig = { allowedOrigins: [], trustProxy: production ? 1 : 0, nodeEnv: production ? 'production' : 'test', serveFrontend: production };
-  const api = createApp({ repository: createRepository(models), config: testConfig, logger: { info() {}, error() {} }, limiter: { orders: 10000, confirmations: 10000, adminLogin: 10000 } });
+  // No real Cloudinary account is contacted by production browser tests.
+  const testCloud = production ? createTestCloudinary() : null;
+  const uploadService = testCloud ? createUploadService({ nodeEnv: 'production', cloudinary: testCloudinaryConfig, fetcher: testCloud.fetch }) : undefined;
+  const api = createApp({ repository: createRepository(models), config: testConfig, logger: { info() {}, error() {} }, limiter: { orders: 10000, confirmations: 10000, adminLogin: 10000 }, uploadService });
   apiServer = await new Promise((resolve, reject) => {
     const listener = production ? https.createServer(tls, api).listen(0, '127.0.0.1', () => resolve(listener)) : api.listen(0, '127.0.0.1', () => resolve(listener));
     listener.once('error', reject);

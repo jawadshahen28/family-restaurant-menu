@@ -5,7 +5,6 @@ import AdminLayout from '../../../components/admin/layout/AdminLayout.jsx';
 import AdminPageHeader from '../../../components/admin/common/AdminPageHeader.jsx';
 import ToggleSwitch from '../../../components/admin/common/ToggleSwitch.jsx';
 import { getAdminOffers, updateAdminOffer } from '../../../services/adminOffersService.js';
-import { clearMenuCache } from '../../../services/menuService.js';
 import { useAdminAuth } from '../../../context/AdminAuthContext.jsx';
 import { formatCurrency, getOfferStatus, formatDate } from '../../../utils/format.js';
 
@@ -39,7 +38,6 @@ export default function OffersListPage() {
     setTogglingId(offer.id);
     try {
       const updated = await updateAdminOffer(offer.id, { isActive: newStatus }, csrfToken);
-      clearMenuCache();
       setOffers((prev) =>
         prev.map((o) => (o.id === offer.id ? { ...o, isActive: updated.isActive } : o))
       );

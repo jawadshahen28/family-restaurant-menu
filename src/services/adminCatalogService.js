@@ -1,4 +1,5 @@
 import { apiRequest } from './apiClient.js';
+import { notifyMenuChanged } from './menuService.js';
 
 export async function getAdminCategories() {
   const result = await apiRequest('/admin/categories', { credentials: 'same-origin' });
@@ -12,6 +13,7 @@ export async function createAdminCategory(data, csrfToken) {
     csrfToken,
     credentials: 'same-origin',
   });
+  notifyMenuChanged();
   return result.data;
 }
 
@@ -22,6 +24,7 @@ export async function updateAdminCategory(id, data, csrfToken) {
     csrfToken,
     credentials: 'same-origin',
   });
+  notifyMenuChanged();
   return result.data;
 }
 
@@ -31,6 +34,7 @@ export async function deleteAdminCategory(id, csrfToken) {
     csrfToken,
     credentials: 'same-origin',
   });
+  notifyMenuChanged();
   return result.data;
 }
 
@@ -52,6 +56,7 @@ export async function createAdminProduct(data, csrfToken) {
     csrfToken,
     credentials: 'same-origin',
   });
+  notifyMenuChanged();
   return result.data;
 }
 
@@ -62,6 +67,7 @@ export async function updateAdminProduct(id, data, csrfToken) {
     csrfToken,
     credentials: 'same-origin',
   });
+  notifyMenuChanged();
   return result.data;
 }
 
@@ -71,13 +77,14 @@ export async function deleteAdminProduct(id, csrfToken) {
     csrfToken,
     credentials: 'same-origin',
   });
+  notifyMenuChanged();
   return result.data;
 }
 
 /**
  * Converts a browser File/Blob to Base64 and uploads it securely to the admin upload endpoint.
  */
-export async function uploadAdminImage(file, csrfToken) {
+export async function uploadAdminImage(file, csrfToken, folder = 'products') {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = async () => {
@@ -89,9 +96,11 @@ export async function uploadAdminImage(file, csrfToken) {
             data: base64Data,
             mimeType: file.type || 'image/jpeg',
             filename: file.name || 'image.jpg',
+            folder,
           },
           csrfToken,
           credentials: 'same-origin',
+          timeoutMs: 60000,
         });
         resolve(result.data);
       } catch (err) {

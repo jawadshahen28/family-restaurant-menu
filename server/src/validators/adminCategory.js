@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import { ApiError } from '../utils/errors.js';
+import { imageInput } from './image.js';
 
 export const createCategorySchema = z.object({
+  ...imageInput,
   name: z.string({ required_error: 'اسم الفئة مطلوب.' })
     .trim()
     .min(2, 'اسم الفئة يجب أن يتكون من حرفين على الأقل.')
@@ -30,5 +32,6 @@ export function validateUpdateCategory(body) {
     const issue = result.error.issues[0];
     throw new ApiError(400, 'VALIDATION_ERROR', issue?.message || 'بيانات الفئة غير صحيحة.');
   }
-  return result.data;
+  // Preserve the saved image (and other omitted fields) on availability-only edits.
+  return Object.fromEntries(Object.entries(result.data).filter(([key]) => Object.hasOwn(body, key)));
 }

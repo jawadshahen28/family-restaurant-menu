@@ -17,10 +17,11 @@ export async function startServer({ configuration = loadEnvironment, connect = c
       listener.once('error', reject);
     });
     log.info('server_ready', { port: config.port, database: 'family_menu' });
+    app.locals?.imageService?.start();
     const close = () => new Promise((resolve, reject) => {
       const deadline = setTimeout(() => { server.closeAllConnections(); }, 10000);
       deadline.unref();
-      server.close(async () => { clearTimeout(deadline); try { await connection.close(); resolve(); } catch { reject(new Error('تعذّر إغلاق اتصال قاعدة البيانات.')); } });
+      server.close(async () => { clearTimeout(deadline); try { await app.locals?.imageService?.stop(); await connection.close(); resolve(); } catch { reject(new Error('تعذّر إغلاق اتصال قاعدة البيانات.')); } });
       server.closeIdleConnections();
     });
     return { server, close };

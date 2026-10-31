@@ -1,8 +1,9 @@
 import { normalizeOrderStatus } from './orderService.js';
 import { ApiError } from '../utils/errors.js';
+import { imageResponse } from '../utils/images.js';
 
 export function createRepository(models) {
-  const { Category, Product, Offer, Order, StoreSettings, Admin, AdminSession, AdminPushSubscription, PushNotificationJob } = models;
+  const { Category, Product, Offer, Order, StoreSettings, Admin, AdminSession, AdminPushSubscription, PushNotificationJob, ImageCleanupJob } = models;
   return {
     async healthy() { return Category.db.readyState === 1; },
     async categories() { return Category.find({ isActive: true }).sort({ sortOrder: 1, _id: 1 }).lean(); },
@@ -27,6 +28,22 @@ export function createRepository(models) {
     async deleteAdminSession(sessionId) { return AdminSession.deleteOne({ sessionId }); },
     async deleteAdminSessionsForAdmin(adminId) { return AdminSession.deleteMany({ adminId }); },
     models,
+    async queueImageDeletion(asset) {
+      return ImageCleanupJob.findOneAndUpdate({ cloudName: asset.cloudName, imagePublicId: asset.imagePublicId }, { $set: { imageUrl: asset.imageUrl, nextAttemptAt: new Date() } }, { upsert: true, returnDocument: 'after', runValidators: true }).lean();
+    },
+    async pendingImageDeletions() { return ImageCleanupJob.find({ nextAttemptAt: { $lte: new Date() } }).sort({ nextAttemptAt: 1 }).limit(20).lean(); },
+    async deferImageDeletion(id) { return ImageCleanupJob.updateOne({ _id: id }, { $set: { nextAttemptAt: new Date(Date.now() + 60000) } }); },
+    async completeImageDeletion(id) { return ImageCleanupJob.deleteOne({ _id: id }); },
+    async imageIsReferenced(asset) {
+      const escape = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const url = new RegExp(`^https://res\\.cloudinary\\.com/${escape(asset.cloudName)}/image/upload/(?:v\\d+/)?${escape(asset.imagePublicId)}\\.[a-zA-Z0-9]+(?:\\?.*)?$`);
+      const query = { $or: [{ imagePublicId: asset.imagePublicId }, { imageUrl: url }, { image: url }] };
+      const results = await Promise.all([Category.exists(query), Product.exists(query), Offer.exists(query), Order.exists({ 'items.image': url })]);
+      return results.some(Boolean);
+    },
+    async clearInheritedOfferImages(productId, oldUrl) {
+      return Offer.updateMany({ productId, $and: [{ $or: [{ image: oldUrl }, { imageUrl: oldUrl }] }, { $or: [{ imagePublicId: '' }, { imagePublicId: { $exists: false } }] }] }, { $set: { image: '', imageUrl: '', imagePublicId: '', imageVersion: null } });
+    },
     async allCategoriesWithCounts() {
       const [categories, counts] = await Promise.all([
         Category.find().sort({ sortOrder: 1, _id: 1 }).lean(),
@@ -34,15 +51,15 @@ export function createRepository(models) {
       ]);
       const countMap = Object.fromEntries(counts.map((c) => [String(c._id), c.count]));
       return categories.map((cat) => ({
-        ...cat,
+        ...imageResponse(cat),
         id: String(cat._id),
         productCount: countMap[String(cat._id)] || 0,
       }));
     },
-    async findCategoryById(id) { return Category.findById(id).lean(); },
+    async findCategoryById(id) { return imageResponse(await Category.findById(id).lean()); },
     async findCategoryBySlug(slug) { return Category.findOne({ slug }).lean(); },
-    async createCategory(data) { return (await Category.create(data)).toObject(); },
-    async updateCategory(id, data) { return Category.findByIdAndUpdate(id, { $set: data }, { returnDocument: 'after', runValidators: true }).lean(); },
+    async createCategory(data) { return imageResponse((await Category.create(data)).toObject()); },
+    async updateCategory(id, data) { return imageResponse(await Category.findByIdAndUpdate(id, { $set: data }, { returnDocument: 'after', runValidators: true }).lean()); },
     async deleteCategory(id) { return Category.findByIdAndDelete(id); },
     async countProductsForCategory(categoryId) { return Product.countDocuments({ categoryId }); },
 
@@ -56,17 +73,17 @@ export function createRepository(models) {
       if (typeof isAvailable === 'boolean') query.isAvailable = isAvailable;
       const products = await Product.find(query).sort({ sortOrder: 1, _id: 1 }).populate('categoryId', 'name slug isActive').lean();
       return products.map((prod) => ({
-        ...prod,
+        ...imageResponse(prod),
         id: String(prod._id),
       }));
     },
-    async findProductById(id) { return Product.findById(id).populate('categoryId', 'name slug isActive').lean(); },
+    async findProductById(id) { return imageResponse(await Product.findById(id).populate('categoryId', 'name slug isActive').lean()); },
     async createProduct(data) {
       const created = await Product.create(data);
-      return (await created.populate('categoryId', 'name slug isActive')).toObject();
+      return imageResponse((await created.populate('categoryId', 'name slug isActive')).toObject());
     },
     async updateProduct(id, data) {
-      return Product.findByIdAndUpdate(id, { $set: data }, { returnDocument: 'after', runValidators: true }).populate('categoryId', 'name slug isActive').lean();
+      return imageResponse(await Product.findByIdAndUpdate(id, { $set: data }, { returnDocument: 'after', runValidators: true }).populate('categoryId', 'name slug isActive').lean());
     },
     async deleteProduct(id) { return Product.findByIdAndDelete(id); },
     async countActiveOffersForProduct(productId) {
@@ -76,26 +93,27 @@ export function createRepository(models) {
       return Offer.updateMany({ productId }, { $set: { productId: null } });
     },
     async allAdminOffers() {
-      const offers = await Offer.find().sort({ createdAt: -1, _id: -1 }).populate('productId', 'name price image isAvailable categoryId').lean();
+      const offers = await Offer.find().sort({ createdAt: -1, _id: -1 }).populate('productId', 'name price image imageUrl imagePublicId imageVersion isAvailable categoryId').lean();
       return offers.map((off) => ({
-        ...off,
+        ...imageResponse(off),
+        productId: imageResponse(off.productId),
         id: String(off._id),
       }));
     },
     async findOfferById(id) {
-      const offer = await Offer.findById(id).populate('productId', 'name price image isAvailable categoryId').lean();
+      const offer = await Offer.findById(id).populate('productId', 'name price image imageUrl imagePublicId imageVersion isAvailable categoryId').lean();
       if (!offer) return null;
-      return { ...offer, id: String(offer._id) };
+      return { ...imageResponse(offer), productId: imageResponse(offer.productId), id: String(offer._id) };
     },
     async findOfferBySlug(slug) {
       return Offer.findOne({ slug }).lean();
     },
     async createOffer(data) {
       const created = await Offer.create(data);
-      return (await created.populate('productId', 'name price image isAvailable categoryId')).toObject();
+      return imageResponse((await created.populate('productId', 'name price image imageUrl imagePublicId imageVersion isAvailable categoryId')).toObject());
     },
     async updateOffer(id, data) {
-      return Offer.findByIdAndUpdate(id, { $set: data }, { returnDocument: 'after', runValidators: true }).populate('productId', 'name price image isAvailable categoryId').lean();
+      return imageResponse(await Offer.findByIdAndUpdate(id, { $set: data }, { returnDocument: 'after', runValidators: true }).populate('productId', 'name price image imageUrl imagePublicId imageVersion isAvailable categoryId').lean());
     },
     async deleteOffer(id) {
       return Offer.findByIdAndDelete(id);

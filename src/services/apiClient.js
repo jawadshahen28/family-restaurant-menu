@@ -3,14 +3,14 @@ export class ApiClientError extends Error {
 }
 
 const baseURL = (import.meta.env?.VITE_API_BASE_URL || '').replace(/\/$/, '');
-export async function apiRequest(path, { method = 'GET', body, token, csrfToken, credentials = 'omit', signal } = {}) {
+export async function apiRequest(path, { method = 'GET', body, token, csrfToken, credentials = 'omit', signal, timeoutMs = 15000 } = {}) {
   // Admin cookies belong to this origin, even when public API calls use a separate host.
   const requestBaseURL = path.startsWith('/admin/') ? '' : baseURL;
   const controller = new AbortController();
   const abort = () => controller.abort(signal?.reason);
   signal?.addEventListener('abort', abort, { once: true });
   if (signal?.aborted) abort();
-  const timeout = setTimeout(() => controller.abort(), 15000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(`${requestBaseURL}/api${path}`, {
       method,

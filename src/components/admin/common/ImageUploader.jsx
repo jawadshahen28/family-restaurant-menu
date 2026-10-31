@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Camera, Image as ImageIcon, Loader2, AlertCircle } from 'lucide-react';
 import { uploadAdminImage } from '../../../services/adminCatalogService.js';
 import { useAdminAuth } from '../../../context/AdminAuthContext.jsx';
@@ -6,6 +6,8 @@ import { useAdminAuth } from '../../../context/AdminAuthContext.jsx';
 export default function ImageUploader({
   value,
   onChange,
+  onUploadStateChange,
+  folder = 'products',
   label = 'صورة الوجبة',
   placeholder = 'اختر صورة الوجبة',
 }) {
@@ -14,6 +16,7 @@ export default function ImageUploader({
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [previewUrl, setPreviewUrl] = useState('');
+  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
 
   const handleFileChange = async (e) => {
     const file = e.target.files?.[0];
@@ -36,15 +39,19 @@ export default function ImageUploader({
     setPreviewUrl(objectUrl);
 
     setUploading(true);
+    onUploadStateChange?.(true);
     try {
-      const result = await uploadAdminImage(file, csrfToken);
-      onChange(result.url);
+      const result = await uploadAdminImage(file, csrfToken, folder);
+      if (!result.imageUrl || !result.imageUploadToken) throw new Error('لم يكتمل رفع الصورة إلى الخادم. أعد المحاولة.');
+      onChange(result.imageUrl, result);
       setPreviewUrl('');
     } catch (err) {
       setError(err.message || 'فشل رفع الصورة، يرجى المحاولة مرة أخرى.');
       setPreviewUrl('');
     } finally {
+      URL.revokeObjectURL(objectUrl);
       setUploading(false);
+      onUploadStateChange?.(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
@@ -56,6 +63,7 @@ export default function ImageUploader({
       <input
         ref={fileInputRef}
         type="file"
+        disabled={uploading}
         accept="image/jpeg,image/png,image/webp"
         onChange={handleFileChange}
         className="hidden"

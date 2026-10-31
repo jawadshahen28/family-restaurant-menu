@@ -1,9 +1,11 @@
 import { z } from 'zod';
 import { ApiError } from '../utils/errors.js';
+import { imageInput } from './image.js';
 
 const objectIdRegex = /^[a-fA-F0-9]{24}$/;
 
 export const createProductSchema = z.object({
+  ...imageInput,
   name: z.string({ required_error: 'اسم الوجبة مطلوب.' })
     .trim()
     .min(2, 'اسم الوجبة يجب أن يتكون من حرفين على الأقل.')
@@ -41,5 +43,6 @@ export function validateUpdateProduct(body) {
     const issue = result.error.issues[0];
     throw new ApiError(400, 'VALIDATION_ERROR', issue?.message || 'بيانات الوجبة غير صحيحة.');
   }
-  return result.data;
+  // Zod defaults inside partial schemas must not erase fields omitted by PATCH.
+  return Object.fromEntries(Object.entries(result.data).filter(([key]) => Object.hasOwn(body, key)));
 }

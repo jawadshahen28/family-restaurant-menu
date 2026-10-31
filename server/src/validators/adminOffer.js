@@ -1,9 +1,11 @@
 import { z } from 'zod';
 import { ApiError } from '../utils/errors.js';
+import { imageInput } from './image.js';
 
 const objectIdRegex = /^[a-fA-F0-9]{24}$/;
 
 export const createOfferSchema = z.object({
+  ...imageInput,
   title: z.string({ required_error: 'عنوان العرض مطلوب.' })
     .trim()
     .min(2, 'عنوان العرض يجب أن يتكون من حرفين على الأقل.')
@@ -36,6 +38,7 @@ export const createOfferSchema = z.object({
 );
 
 export const updateOfferSchema = z.object({
+  ...imageInput,
   title: z.string().trim().min(2, 'عنوان العرض يجب أن يتكون من حرفين على الأقل.').max(120, 'عنوان العرض يجب ألا يتجاوز 120 حرفًا.').optional(),
   productId: z.string().regex(objectIdRegex, 'معرّف الوجبة غير صالح.').optional(),
   originalPrice: z.coerce.number()
